@@ -29,6 +29,9 @@ sock352PktHdrData = '!BBBBHHLLQQLL'
 header_len = struct.calcsize(sock352PktHdrData)
 udpPkt_hdr_data = struct.Struct(sock352PktHdrData)
 
+MAXIMUM_PACKET_SIZE = 64000
+MAXIMUM_PAYLOAD_SIZE = MAXIMUM_PACKET_SIZE - header_len
+
 PACKET_FLAG_INDEX = 1
 PACKET_SEQUENCE_NO_INDEX = 8
 PACKET_ACK_NO_INDEX = 9
@@ -202,6 +205,30 @@ class socket:
 
         return
 
+    def create_data_packets(self, buffer):
+
+        # total packets needed to transmit the entire buffer
+        total_packets = int(len(buffer) / MAXIMUM_PAYLOAD_SIZE)
+        if len(buffer) % MAXIMUM_PAYLOAD_SIZE != 0:
+            total_packets += 1
+
+        payload_len = MAXIMUM_PAYLOAD_SIZE
+
+        for i in range(0, total_packets):
+            if i == total_packets - 1:
+                if len(buffer) % MAXIMUM_PAYLOAD_SIZE != 0:
+                    payload_len = len(buffer) % MAXIMUM_PAYLOAD_SIZE
+
+            new_packet = self.createPacket(flags=0x0,
+                                           sequence_no=self.sequence_no,
+                                           ack_no=self.ack_no,
+                                           payload_len=payload_len)
+            self.sequence_no += 1
+            self.ack_no += 1
+            self.data_packets.append(new_packet + buffer[MAXIMUM_PAYLOAD_SIZE * i:
+                                                         MAXIMUM_PAYLOAD_SIZE * i + payload_len])
+        return total_packets
+
     def send(self, buffer):  # fill in your code here
         byte_sent = 0
         current_seq = 0
@@ -237,6 +264,8 @@ class socket:
         thread = threading.Thread(target=recv_thread)
         thread.start()
 
+        total_packets = self.create_data_packets(buffer)
+
         while byte_sent < len(buffer):
             try:
                 server_packet, address = self.socket.recvfrom(header_len)
@@ -248,6 +277,7 @@ class socket:
                 byte_sent = current_seq
                 thread = threading.Thread(target=recv_thread)
                 thread.start()
+                print('Started data pkt transmission...')
                 self.lock.release()
                 continue
             u_header = udpPkt_hdr_data.unpack(server_packet)
