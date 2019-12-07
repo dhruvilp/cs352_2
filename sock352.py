@@ -244,10 +244,11 @@ class socket:
         return total_packets
 
     def send(self, buffer):  # fill in your code here
+
         byte_sent = 0
         current_seq = 0
         self.sequence_no = 0
-        self.socket.settimeout(0.2)
+        self.socket.settimeout(None)
 
         def recv_thread():
             k_seq_no = self.sequence_no
@@ -264,7 +265,7 @@ class socket:
                 self.socket.sendto(p_header + b_fragment, (self.server_address, int(UDPTx)))
                 self.lock.acquire()
 
-                if int(round(time.time() * 1000)) - time_tracker > 2:
+                if int(round(time.time() * 1000)) - time_tracker > 200:
                     if self.go_back_n:
                         self.go_back_n = False
                         return
@@ -278,7 +279,7 @@ class socket:
         thread = threading.Thread(target=recv_thread)
         thread.start()
 
-        total_packets = self.create_data_packets(buffer)
+#        total_packets = self.create_data_packets(buffer)
 
         while byte_sent < len(buffer):
             try:
@@ -291,7 +292,7 @@ class socket:
                 byte_sent = current_seq
                 thread = threading.Thread(target=recv_thread)
                 thread.start()
-                print('Started data pkt transmission...')
+                print('Socket Timeout, starting go-back-n...')
                 self.lock.release()
                 continue
             u_header = udpPkt_hdr_data.unpack(server_packet)
