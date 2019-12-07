@@ -2,7 +2,7 @@ import binascii
 import time
 from math import ceil
 
-import socket as syssock
+import ta_sockets as syssock
 import struct
 import threading
 import sys
@@ -30,6 +30,7 @@ class socket:
         sock352PktHdrData = '!BBBBHHLLQQLL'
         self.struct = struct.Struct(sock352PktHdrData)
         self.socket = syssock.socket(syssock.AF_INET, syssock.SOCK_DGRAM)
+        self.recv_address = None
         self.rn = 0
         self.my_rn = 0
         self.done = False
@@ -87,7 +88,7 @@ class socket:
             else:
                 self.send_packet(ack_no=self.rn, flags=SOCK352_RESET)
 
-        return (self, self.send_address)
+        return self, self.send_address
 
     def close(self):  # fill in your code here
         self.socket.settimeout(0.2)
@@ -128,7 +129,7 @@ class socket:
                 start_index = imagined_rn - start_rn
                 num_left = goal - imagined_rn
                 end_index = start_index + min(num_left, MAX_PAYLOAD_SIZE)
-                payload = buffer[start_index : end_index]
+                payload = buffer[start_index:end_index]
                 self.send_packet(seq_no=imagined_rn, payload=payload)
                 imagined_rn += len(payload)
             return len(buffer)
@@ -151,6 +152,7 @@ class socket:
             self.send_packet(ack_no = self.my_rn, flags=SOCK352_ACK)
         final_string = b''.join(good_packet_list)
         return final_string
+
     def register_timeout(self):
         with self.lock:
             self.timeout = True

@@ -5,7 +5,7 @@ PROJECT: CS352 -- PART 2
 """
 
 import binascii
-import socket as syssock
+import ta_sockets as syssock
 import struct
 import sys
 import time
@@ -45,16 +45,13 @@ UDPRx = 27182  # receiver port
 
 def init(UDPportTx, UDPportRx):  # initialize your UDP socket here
     global UDPRx, UDPTx
-    if UDPportTx:
-        UDPTx = UDPportTx
-    if UDPportRx:
-        UDPRx = UDPportRx
-    pass
-
+    UDPTx = UDPportTx
+    UDPRx = UDPportRx
 
 class socket:
     def __init__(self):  # fill in your code here
         self.address = ('', int(UDPRx))
+        self.struct = struct.Struct(sock352PktHdrData)
         self.socket = syssock.socket(syssock.AF_INET, syssock.SOCK_DGRAM)
         self.acknowledge_no = 0
         self.sequence_no = 0
@@ -174,7 +171,6 @@ class socket:
                 except syssock.timeout:
                     return
             else:
-                # i don't know what condition should go here
                 pass
 
             try:
@@ -247,6 +243,8 @@ class socket:
                     b_fragment = buffer[k_seq_no:k_seq_no + self.fragment_size]
                     payload_len = self.fragment_size
                 p_header = udpPkt_hdr_data.pack(version, SOCK352_SYN, 0, 0, header_len, 404, 0, 0, k_seq_no, self.acknowledge_no, 404, payload_len)
+                # we've to pass data_packets in sendto
+
                 self.socket.sendto(p_header + b_fragment, (self.server_address, int(UDPTx)))
                 self.lock.acquire()
 
@@ -261,10 +259,11 @@ class socket:
                     k_seq_no += payload_len
                 self.lock.release()
 
+        total_packets = self.create_data_packets(buffer)
+
         thread = threading.Thread(target=recv_thread)
         thread.start()
-
-        total_packets = self.create_data_packets(buffer)
+        print('Started data pkt transmission...')
 
         while byte_sent < len(buffer):
             try:
@@ -277,7 +276,6 @@ class socket:
                 byte_sent = current_seq
                 thread = threading.Thread(target=recv_thread)
                 thread.start()
-                print('Started data pkt transmission...')
                 self.lock.release()
                 continue
             u_header = udpPkt_hdr_data.unpack(server_packet)
