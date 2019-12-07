@@ -61,12 +61,29 @@ class socket:
         self.go_back_n = False
         self.fragment_size = 8192  # 64K bytes
         self.is_server_established = False
+        self.data_packets = []
         self.lock = threading.Lock()
 
         return
 
     def bind(self, address):
         return
+
+    def create_packet(self, dest=None, seq_no=0, ack_no=0, payload=b'', flags=0):
+        if dest is None:
+            dest = self.server_address
+        version = 1
+        opt_ptr = 1
+        protocol = 0
+        checksum = 0
+        source_port = 0
+        dest_port = 0
+        window = 0
+        payload_len = len(payload)
+        header = udpPkt_hdr_data.pack(version, flags, opt_ptr, protocol, checksum, header_len,
+                                  source_port, dest_port, seq_no, ack_no, window, payload_len)
+        packet = header + payload
+        return packet
 
     def connect(self, address):  # fill in your code here
         print('Connecting. . .')
@@ -215,21 +232,19 @@ class socket:
                 if len(buffer) % MAXIMUM_PAYLOAD_SIZE != 0:
                     payload_len = len(buffer) % MAXIMUM_PAYLOAD_SIZE
 
-            new_packet = self.createPacket(flags=0x0,
-                                           sequence_no=self.sequence_no,
-                                           ack_no=self.ack_no,
-                                           payload_len=payload_len)
+            new_packet = self.create_packet(flags=0x0,seq_no=self.sequence_no, ack_no=self.acknowledge_no,
+                                            payload=buffer[MAXIMUM_PAYLOAD_SIZE * i:MAXIMUM_PAYLOAD_SIZE * (i+1)])
             self.sequence_no += 1
-            self.ack_no += 1
-            self.data_packets.append(new_packet + buffer[MAXIMUM_PAYLOAD_SIZE * i:
-                                                         MAXIMUM_PAYLOAD_SIZE * i + payload_len])
+            self.acknowledge_no += 1
+            self.data_packets.append(new_packet)
         return total_packets
 
     def send(self, buffer):  # fill in your code here
+
         byte_sent = 0
         current_seq = 0
         self.sequence_no = 0
-        self.socket.settimeout(0.2)
+        self.socket.settimeout(None)
 
         def recv_thread():
             k_seq_no = self.sequence_no
@@ -248,7 +263,7 @@ class socket:
                 self.socket.sendto(p_header + b_fragment, (self.server_address, int(UDPTx)))
                 self.lock.acquire()
 
-                if int(round(time.time() * 1000)) - time_tracker > 2:
+                if int(round(time.time() * 1000)) - time_tracker > 200:
                     if self.go_back_n:
                         self.go_back_n = False
                         return
@@ -265,6 +280,8 @@ class socket:
         thread.start()
         print('Started data pkt transmission...')
 
+#        total_packets = self.create_data_packets(buffer)
+
         while byte_sent < len(buffer):
             try:
                 server_packet, address = self.socket.recvfrom(header_len)
@@ -276,6 +293,7 @@ class socket:
                 byte_sent = current_seq
                 thread = threading.Thread(target=recv_thread)
                 thread.start()
+                print('Socket Timeout, starting go-back-n...')
                 self.lock.release()
                 continue
             u_header = udpPkt_hdr_data.unpack(server_packet)

@@ -67,6 +67,7 @@ def main():
     s.connect((destination, port))
     # mesure the start stamp
     start_stamp = time.clock()
+    
     # load the whole file into memory
     whole_file = fd.read()
     # mesure its length
