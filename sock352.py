@@ -5,7 +5,7 @@ PROJECT: CS352 -- PART 2
 """
 
 import binascii
-import ta_sockets as syssock
+import socket as syssock
 import struct
 import sys
 import time
