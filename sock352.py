@@ -149,14 +149,25 @@ class socket:
         self.socket.settimeout(None)
         goal_length = int(ceil(float(nbytes) / MAX_PAYLOAD_SIZE))
         while len(good_packet_list) < goal_length:
-            #print(f"Goal is {goal_length} currently at {len(good_packet_list)}")
+            x = len(good_packet_list)
+            
             if len(good_packet_list) == goal_length -1:
                 num_to_get = HEADER_LEN + nbytes - ((goal_length - 1) * MAX_PAYLOAD_SIZE)
             else:
                 num_to_get = HEADER_LEN + MAX_PAYLOAD_SIZE
+            print(f"Goal is {goal_length} currently at {x}, leaving {num_to_get}")
             data_pack = self.get_packet(size=num_to_get)
             if(data_pack['flags'] != 0):
                 print('Probably getting extra from handshake', data_pack['flags'])
+                if data_pack['flags'] == SOCK352_FIN:
+                    #self.done = True
+                    #self.send_packet(ack_no=data_pack['seq_no'] + 1, flags=SOCK352_ACK)
+                    print("Fin flag sent")
+                    print(good_packet_list)
+                    final_string = b''.join(good_packet_list)
+
+                    return final_string
+                    break
             elif data_pack['seq_no'] == self.my_rn:
                 self.my_rn += data_pack['payload_len']
                 good_packet_list.append(data_pack['payload'])
@@ -223,7 +234,7 @@ class socket:
         header = self.struct.pack(version, flags, opt_ptr, protocol, checksum, header_len,
                                   source_port, dest_port, seq_no, ack_no, window, payload_len)
         packet = header + payload
-        #print(f"Package sending is seq {seq_no} with ack {ack_no} ")
+        print(f"Package sending is seq {seq_no} with ack {ack_no} ")
         self.socket.sendto(packet, dest)
 
 
