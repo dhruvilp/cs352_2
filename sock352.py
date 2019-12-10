@@ -75,7 +75,7 @@ class socket:
         while not received_handshake_packet:
             try:
                 (syn_ack_packet, addr) = self.socket.recvfrom(PACKET_HEADER_LENGTH)
-                syn_ack_packet = struct.unpack(sock352PktHdrData, syn_ack_packet)
+                syn_ack_packet = UDPPKT_HDR_DATA.unpack(syn_ack_packet)
                 if syn_ack_packet[PACKET_FLAG_INDEX] == SOCK352_RESET:
                     print("Connection reset by the server!!!")
                     return
@@ -108,7 +108,7 @@ class socket:
         while not got_connection_request:
             try:
                 (syn_packet, addr) = self.socket.recvfrom(PACKET_HEADER_LENGTH)
-                syn_packet = struct.unpack(sock352PktHdrData, syn_packet)
+                syn_packet = UDPPKT_HDR_DATA.unpack(syn_packet)
                 if syn_packet[PACKET_FLAG_INDEX] == SOCK352_SYN:
                     got_connection_request = True
                 if syn_packet[PACKET_FLAG_INDEX] == SOCK352_SYN | SOCK352_HAS_OPT:
@@ -127,7 +127,7 @@ class socket:
         while not got_final_ack:
             try:
                 (ack_packet, addr) = self.socket.recvfrom(PACKET_HEADER_LENGTH)
-                ack_packet = struct.unpack(sock352PktHdrData, ack_packet)
+                ack_packet = UDPPKT_HDR_DATA.unpack(ack_packet)
                 if ack_packet[PACKET_FLAG_INDEX] == SOCK352_ACK:
                     got_final_ack = True
             except syssock.timeout:
