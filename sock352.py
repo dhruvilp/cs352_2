@@ -64,6 +64,7 @@ class socket:
                 self.rn = syn_ack['ack_no']
                 self.send_packet(ack_no=self.my_rn, flags=SOCK352_ACK)
         print("Connection established")
+        
         return
 
     def listen(self, backlog):
@@ -137,30 +138,35 @@ class socket:
                 num_left = goal - imagined_rn
                 end_index = start_index + min(num_left, MAX_PAYLOAD_SIZE)
                 payload = buffer[start_index : end_index]
+                print(f"In send(), sending seq {imagined_rn} from {start_index} to {end_index}, with {num_left} left")
                 self.send_packet(seq_no=imagined_rn, payload=payload)
                 imagined_rn += len(payload)
-            return len(buffer)
+        print("leaving send()")
+        return len(buffer)
 
     def recv(self, nbytes):
         good_packet_list = []
         self.socket.settimeout(None)
         goal_length = int(ceil(float(nbytes) / MAX_PAYLOAD_SIZE))
         while len(good_packet_list) < goal_length:
+            #print(f"Goal is {goal_length} currently at {len(good_packet_list)}")
             if len(good_packet_list) == goal_length -1:
                 num_to_get = HEADER_LEN + nbytes - ((goal_length - 1) * MAX_PAYLOAD_SIZE)
             else:
                 num_to_get = HEADER_LEN + MAX_PAYLOAD_SIZE
             data_pack = self.get_packet(size=num_to_get)
-            print("Data pack is: " + str(data_pack) + " waiting on " + str(num_to_get))
             if(data_pack['flags'] != 0):
                 print('Probably getting extra from handshake', data_pack['flags'])
             elif data_pack['seq_no'] == self.my_rn:
-                print("got packet:" + str(data_pack['seq_no']))
                 self.my_rn += data_pack['payload_len']
                 good_packet_list.append(data_pack['payload'])
             self.send_packet(ack_no = self.my_rn, flags=SOCK352_ACK)
+
+        print(good_packet_list)
         final_string = b''.join(good_packet_list)
+
         return final_string
+
     def register_timeout(self):
         with self.lock:
             self.timeout = True
@@ -178,8 +184,7 @@ class socket:
                     self.send_packet(ack_no=self.rn, flags=SOCK352_ACK)
                 elif ack_pack['flags'] == SOCK352_FIN:
                     self.done = True
-                    self.send_packet(
-                    ack_no=ack_pack['seq_no'] + 1, flags=SOCK352_ACK)
+                    self.send_packet(ack_no=ack_pack['seq_no'] + 1, flags=SOCK352_ACK)
                     return
                 if time.time() - timer > 0.2:
                     self.register_timeout()
@@ -218,7 +223,7 @@ class socket:
         header = self.struct.pack(version, flags, opt_ptr, protocol, checksum, header_len,
                                   source_port, dest_port, seq_no, ack_no, window, payload_len)
         packet = header + payload
-        print(f"Package sending is seq {seq_no} with ack {ack_no} ")
+        #print(f"Package sending is seq {seq_no} with ack {ack_no} ")
         self.socket.sendto(packet, dest)
 
 
