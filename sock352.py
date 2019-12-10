@@ -16,6 +16,7 @@ SOCK352_HAS_OPT = 0xA0
 MAX_PAYLOAD_SIZE = 64000
 HEADER_LEN = 40
 HEADER_SIZE = MAX_PAYLOAD_SIZE + HEADER_LEN
+MAX_WINDOW_SIZE = 262000
 
 send_port = 0
 recv_port = 0
@@ -26,7 +27,6 @@ def init(UDPportTx, UDPportRx):  # initialize your UDP socket here
     send_port = UDPportTx
     recv_port = UDPportRx
 
-
 class socket:
 
     def __init__(self):  # fill in your code here
@@ -36,6 +36,9 @@ class socket:
         self.rn = 0
         self.my_rn = 0
         self.done = False
+        self.window = MAX_WINDOW_SIZE
+        self.open_space = 0
+        self.buf = []
         self.lock = threading.Lock()
         self.timeout = False
         return
@@ -87,7 +90,7 @@ class socket:
         done = False
         self.rn = random.randint(1, 1000)
         while not done:
-            self.send_packet(seq_no=self.rn, ack_no=self.my_rn, flags=SOCK352_SYN | SOCK352_ACK)
+            self.send_packet(seq_no=self.rn, ack_no=self.my_rn, flags=SOCK352_SYN | SOCK352_ACK, window=self.window)
             second_packet = self.get_packet()
             if second_packet['flags'] == SOCK352_ACK and second_packet['ack_no'] == self.rn + 1:
                 self.rn = second_packet['ack_no']
@@ -134,11 +137,18 @@ class socket:
                     self.timeout = False
                 if imagined_rn >= goal:
                     imagined_rn = max(imagined_rn - MAX_PAYLOAD_SIZE, start_rn)
+                if MAX_WINDOW_SIZE > self.window:
+                    # check window size space before sending
+                    end_index = min(num_left, MAX_PAYLOAD_SIZE, self.window)
+                    
                 start_index = imagined_rn - start_rn
                 num_left = goal - imagined_rn
+                if num_left > self.window:
+                    pakets_to_send = self.create_data_packets(buffer)
                 end_index = start_index + min(num_left, MAX_PAYLOAD_SIZE)
+
                 payload = buffer[start_index : end_index]
-                print(f"In send(), sending seq {imagined_rn} from {start_index} to {end_index}, with {num_left} left")
+                #print(f"In send(), sending seq {imagined_rn} from {start_index} to {end_index}, with {num_left} left")
                 self.send_packet(seq_no=imagined_rn, payload=payload)
                 imagined_rn += len(payload)
         print("leaving send()")
@@ -161,8 +171,10 @@ class socket:
                 print('Probably getting extra from handshake', data_pack['flags'])
             elif data_pack['seq_no'] == self.my_rn:
                 self.my_rn += data_pack['payload_len']
+                self.buf.append(data_pack['payload'])
+                self.window = data_pack['payload_len']
                 good_packet_list.append(data_pack['payload'])
-            self.send_packet(ack_no = self.my_rn, flags=SOCK352_ACK)
+            self.send_packet(ack_no = self.my_rn, flags=SOCK352_ACK, window=self.window)
 
         #print(good_packet_list)
         final_string = b''.join(good_packet_list)
@@ -181,6 +193,7 @@ class socket:
                 if ack_pack['ack_no'] > self.rn:
                     with self.lock:
                         self.rn = ack_pack['ack_no']
+                        self.window = ack_pack['window']
                     timer = time.time()
                 elif ack_pack['flags'] == SOCK352_RESET:
                     self.send_packet(ack_no=self.rn, flags=SOCK352_ACK)
@@ -207,7 +220,7 @@ class socket:
         return_dict = dict(zip(('version', 'flags', 'opt_ptr', 'protocol', 'checksum', 'header_len', 'source_port', 'dest_port', 'seq_no', 'ack_no', 'window', 'payload_len', 'payload', 'address'), return_values))
         return return_dict
 
-    def send_packet(self, dest=None, seq_no=0, ack_no=0, payload=b'', flags=0):
+    def send_packet(self, dest=None, seq_no=0, ack_no=0, payload=b'', flags=0, window=0):
         if dest is None:
             dest = self.send_address
         version = 1
@@ -216,7 +229,7 @@ class socket:
         checksum = 0
         source_port = 0
         dest_port = 0
-        window = 0
+        window = window
         payload_len = len(payload)
         header_len = HEADER_LEN
         header = self.struct.pack(version, flags, opt_ptr, protocol, checksum, header_len,
@@ -225,5 +238,42 @@ class socket:
         #print(f"Package sending is seq {seq_no} with ack {ack_no} ")
         self.socket.sendto(packet, dest)
 
+    def create_data_packets(self, buffer):
+
+        # calculates the total packets needed to transmit the entire buffer
+        total_packets = (int)(len(buffer) / MAX_PAYLOAD_SIZE)
+
+        # if the length of the buffer is not divisible by the maximum payload size,
+        # that means an extra packet will need to be sent to transmit the left over data
+        # so it increments total packets by 1
+        if len(buffer) % MAX_PAYLOAD_SIZE != 0:
+            total_packets += 1
+
+        # sets the payload length to be the maximum payload size
+        payload_len = MAX_PAYLOAD_SIZE
+
+        # iterates up to total packets and creates each packet
+        for i in range(0, total_packets):
+            # if we are about to construct the last packet, checks if the payload length
+            # needs to adjust to reflect the left over size or the entire maximum packet size
+            if i == total_packets - 1:
+                if len(buffer) % MAX_PAYLOAD_SIZE != 0:
+                    payload_l = len(buffer) % MAX_PAYLOAD_SIZE
+
+            # creates the new packet with the appropriate header
+            new_packet = self.createPacket(flags=0x0,
+                                           sequence_no=self.my_rn,
+                                           ack_no=self.rn,
+                                           payload_len=payload_len)
+            # consume the sequence and ack no as it was used to create the packet
+
+            # attaches the payload length of buffer to the end of the header to finish constructing the packet
+            message2 = buffer[MAX_PAYLOAD_SIZE * i: MAX_PAYLOAD_SIZE * i + payload_len]
+
+        return total_packets
 
 
+
+    def createPacket(self, flags=0x0, sequence_no=0x0, ack_no=0x0, payload_len=0x0, window=0x0):
+        return self.struct.pack(0x1, flags, 0x0, 0x0, HEADER_LEN,
+                                    0x0, 0x0, 0x0, sequence_no, ack_no, window, payload_len)
