@@ -66,7 +66,7 @@ def main():
     s = sock352.socket()
     s.connect((destination, port))
     # mesure the start stamp
-    start_stamp = time.clock()
+    start_stamp = time.perf_counter()
     
     # load the whole file into memory
     whole_file = fd.read()
@@ -80,7 +80,7 @@ def main():
     if sent != filesize:
         raise RuntimeError("socket broken")
 
-    end_stamp = time.clock()
+    end_stamp = time.perf_counter()
     lapsed_seconds = end_stamp - start_stamp
 
     if lapsed_seconds > 0.0:

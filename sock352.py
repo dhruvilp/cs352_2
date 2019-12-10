@@ -5,7 +5,8 @@ PROJECT: CS352 -- PART 2
 """
 
 import binascii
-import ta_sockets as syssock
+# import ta_sockets as syssock
+import socket as syssock
 import struct
 import sys
 import time
@@ -15,8 +16,8 @@ import random
 # these functions are global to the class and define the UDP ports all messages are sent and received from
 
 # Usage:
-# server1.py -f test.txt -u 8888 -v 9999
-# client1.py -d localhost -f test.txt -u 9999 -v 8888
+# server2.py -f shakespeare.txt -u 8888 -v 9999
+# client2.py -d localhost -f shakespeare.txt -u 9999 -v 8888
 
 SOCK352_SYN = 0x01
 SOCK352_FIN = 0x02
@@ -36,6 +37,7 @@ PACKET_FLAG_INDEX = 1
 PACKET_SEQUENCE_NO_INDEX = 8
 PACKET_ACK_NO_INDEX = 9
 PACKET_DEST_PORT = 7
+WINDOW_INDEX = 10
 PACKET_PAYLOAD_LEN = 11
 FLAG_RESET = -1
 
@@ -47,6 +49,7 @@ def init(UDPportTx, UDPportRx):  # initialize your UDP socket here
     global UDPRx, UDPTx
     UDPTx = UDPportTx
     UDPRx = UDPportRx
+
 
 class socket:
     def __init__(self):  # fill in your code here
@@ -81,7 +84,7 @@ class socket:
         window = 0
         payload_len = len(payload)
         header = udpPkt_hdr_data.pack(version, flags, opt_ptr, protocol, checksum, header_len,
-                                  source_port, dest_port, seq_no, ack_no, window, payload_len)
+                                      source_port, dest_port, seq_no, ack_no, window, payload_len)
         packet = header + payload
         return packet
 
@@ -99,6 +102,7 @@ class socket:
             self.socket.sendto(s_header, (self.server_address, int(UDPTx)))
             print("Request sent!")
             server_packet = self.socket.recv(header_len)
+
         except syssock.timeout:
             print("Error: Timed out!")
             return
@@ -151,6 +155,8 @@ class socket:
         self.sequence_no = u_header[PACKET_ACK_NO_INDEX]
         self.acknowledge_no = u_header[PACKET_SEQUENCE_NO_INDEX] + 1
 
+        print("Server is now connected to the client at %s:%s" % client_address)
+
         k_socket, address = (self.socket, (client_address[0], int(UDPTx)))
         print("Server Accepted Connection!")
         return self, address
@@ -191,7 +197,7 @@ class socket:
                 pass
 
             try:
-                print("Client socket closed successfully! 2")
+                print("Client socket closed successfully!")
                 self.socket.close()
             except:
                 print("Error: Socket has already been closed!")
@@ -226,21 +232,20 @@ class socket:
             total_packets += 1
 
         payload_len = MAXIMUM_PAYLOAD_SIZE
-
         for i in range(0, total_packets):
             if i == total_packets - 1:
                 if len(buffer) % MAXIMUM_PAYLOAD_SIZE != 0:
                     payload_len = len(buffer) % MAXIMUM_PAYLOAD_SIZE
 
-            new_packet = self.create_packet(flags=0x0,seq_no=self.sequence_no, ack_no=self.acknowledge_no,
-                                            payload=buffer[MAXIMUM_PAYLOAD_SIZE * i:MAXIMUM_PAYLOAD_SIZE * (i+1)])
+            new_packet = self.create_packet(flags=0x0, seq_no=self.sequence_no, ack_no=self.acknowledge_no,
+                                            payload=buffer[MAXIMUM_PAYLOAD_SIZE * i:MAXIMUM_PAYLOAD_SIZE * (i + 1)])
             self.sequence_no += 1
             self.acknowledge_no += 1
             self.data_packets.append(new_packet)
+
         return total_packets
 
     def send(self, buffer):  # fill in your code here
-
         byte_sent = 0
         current_seq = 0
         self.sequence_no = 0
@@ -257,10 +262,12 @@ class socket:
                 else:
                     b_fragment = buffer[k_seq_no:k_seq_no + self.fragment_size]
                     payload_len = self.fragment_size
-                p_header = udpPkt_hdr_data.pack(version, SOCK352_SYN, 0, 0, header_len, 404, 0, 0, k_seq_no, self.acknowledge_no, 404, payload_len)
+                p_header = udpPkt_hdr_data.pack(version, SOCK352_SYN, 0, 0, header_len, 404, 0, 0, k_seq_no,
+                                                self.acknowledge_no, 404, payload_len)
                 # we've to pass data_packets in sendto
 
                 self.socket.sendto(p_header + b_fragment, (self.server_address, int(UDPTx)))
+                print("File length sent: " + str(struct.unpack("!L", buffer)[0]) + " bytes")
                 self.lock.acquire()
 
                 if int(round(time.time() * 1000)) - time_tracker > 200:
@@ -275,12 +282,12 @@ class socket:
                 self.lock.release()
 
         total_packets = self.create_data_packets(buffer)
+        print('total packets: ' + str(total_packets))
 
         thread = threading.Thread(target=recv_thread)
         thread.start()
         print('Started data pkt transmission...')
-
-#        total_packets = self.create_data_packets(buffer)
+        print("pack size: " + str(len(self.data_packets[0])))
 
         while byte_sent < len(buffer):
             try:
@@ -304,8 +311,10 @@ class socket:
         print("Packet sent successfully!")
         return byte_sent
 
+    # makes sure that the file length is set and has been communicated to the receiver
+
     def recv(self, nbytes):  # fill in your code here
-        bytes_received =  bytearray()
+        bytes_received = bytearray()
         self.acknowledge_no = 0
         total_packet = 0
         while not nbytes <= 0:
@@ -313,14 +322,12 @@ class socket:
             header = packet[:header_len]
             u_header = udpPkt_hdr_data.unpack(header)
 
-
             print(u_header)
             if self.acknowledge_no == u_header[PACKET_SEQUENCE_NO_INDEX] and \
                     SOCK352_SYN == u_header[PACKET_FLAG_INDEX]:
                 self.sequence_no = u_header[PACKET_ACK_NO_INDEX]
-                self.acknowledge_no = u_header[PACKET_SEQUENCE_NO_INDEX] + u_header[PACKET_PAYLOAD_LEN
-]
- 
+                self.acknowledge_no = u_header[PACKET_SEQUENCE_NO_INDEX] + u_header[PACKET_PAYLOAD_LEN]
+
                 bytes_received.extend(packet[header_len:u_header[PACKET_PAYLOAD_LEN] + header_len])
                 nbytes -= u_header[PACKET_PAYLOAD_LEN]
                 p_header = udpPkt_hdr_data.pack(version, SOCK352_ACK, 0, 0, header_len, 404, 0, 0, self.sequence_no

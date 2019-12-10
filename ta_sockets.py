@@ -128,7 +128,7 @@ class socket:
                 start_index = imagined_rn - start_rn
                 num_left = goal - imagined_rn
                 end_index = start_index + min(num_left, MAX_PAYLOAD_SIZE)
-                payload = buffer[start_index : end_index]
+                payload = buffer[start_index: end_index]
                 self.send_packet(seq_no=imagined_rn, payload=payload)
                 imagined_rn += len(payload)
             return len(buffer)
@@ -138,19 +138,20 @@ class socket:
         self.socket.settimeout(None)
         goal_length = int(ceil(float(nbytes) / MAX_PAYLOAD_SIZE))
         while len(good_packet_list) < goal_length:
-            if len(good_packet_list) == goal_length -1:
+            if len(good_packet_list) == goal_length - 1:
                 num_to_get = HEADER_LEN + nbytes - ((goal_length - 1) * MAX_PAYLOAD_SIZE)
             else:
                 num_to_get = HEADER_LEN + MAX_PAYLOAD_SIZE
             data_pack = self.get_packet(size=num_to_get)
-            if(data_pack['flags'] != 0):
+            if data_pack['flags'] != 0:
                 print('Probably getting extra from handshake', data_pack['flags'])
             elif data_pack['seq_no'] == self.my_rn:
                 self.my_rn += data_pack['payload_len']
                 good_packet_list.append(data_pack['payload'])
-            self.send_packet(ack_no = self.my_rn, flags=SOCK352_ACK)
+            self.send_packet(ack_no=self.my_rn, flags=SOCK352_ACK)
         final_string = b''.join(good_packet_list)
         return final_string
+
     def register_timeout(self):
         with self.lock:
             self.timeout = True
@@ -178,7 +179,9 @@ class socket:
             packet, addr = self.socket.recvfrom(size)
         except syssock.timeout():
             timeout_func()
-            return dict(zip(('version', 'flags', 'opt_ptr', 'protocol', 'checksum', 'header_len', 'source_port', 'dest_port', 'seq_no', 'ack_no', 'window', 'payload_len', 'payload', 'address'), (-1 for i in range(14))))
+            return dict(zip(('version', 'flags', 'opt_ptr', 'protocol', 'checksum', 'header_len', 'source_port',
+                             'dest_port', 'seq_no', 'ack_no', 'window', 'payload_len', 'payload', 'address'),
+                            (-1 for i in range(14))))
         header = packet[:HEADER_LEN]
         header_values = self.struct.unpack(header)
         if len(packet) > HEADER_LEN:
@@ -186,7 +189,9 @@ class socket:
         else:
             payload = 0
         return_values = header_values + (payload, addr)
-        return_dict = dict(zip(('version', 'flags', 'opt_ptr', 'protocol', 'checksum', 'header_len', 'source_port', 'dest_port', 'seq_no', 'ack_no', 'window', 'payload_len', 'payload', 'address'), return_values))
+        return_dict = dict(zip(('version', 'flags', 'opt_ptr', 'protocol', 'checksum', 'header_len', 'source_port',
+                                'dest_port', 'seq_no', 'ack_no', 'window', 'payload_len', 'payload', 'address'),
+                               return_values))
         return return_dict
 
     def send_packet(self, dest=None, seq_no=0, ack_no=0, payload=b'', flags=0):
@@ -204,7 +209,4 @@ class socket:
         header = self.struct.pack(version, flags, opt_ptr, protocol, checksum, header_len,
                                   source_port, dest_port, seq_no, ack_no, window, payload_len)
         packet = header + payload
-        self.socket.sendto_bad(packet, dest)
-
-
-
+        return packet

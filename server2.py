@@ -82,7 +82,7 @@ def main():
     # the MD5 computes a unique hash for all the data
 
     bytes_to_receive = filelen
-    start_stamp = time.clock()
+    start_stamp = time.perf_counter()
 
     random.seed(a=352)
     # main loop to receive the data from the client
@@ -97,7 +97,7 @@ def main():
         bytes_to_receive = bytes_to_receive - len(fragment)
         fd.write(fragment)
 
-    end_stamp = time.clock()
+    end_stamp = time.perf_counter()
     lapsed_seconds = end_stamp - start_stamp
 
     if (lapsed_seconds > 0.0):
