@@ -47,7 +47,7 @@ class socket:
         return
 
     def connect(self, address):  # fill in your code here
-        print("calling connect")
+        #print("calling connect")
         global send_port, recv_port
         self.recv_address = (syssock.gethostname(), int(recv_port))
         self.socket.bind(self.recv_address)
@@ -71,11 +71,11 @@ class socket:
         return
 
     def accept(self):
-        print("in accept")
+        #print("in accept")
         global send_port
         done = False
         while not done:
-            print("waiting for first packet")
+            print("Waiting for first packet")
             first_packet = self.get_packet()
             if first_packet['flags'] == SOCK352_SYN:
                 done = True
@@ -124,8 +124,8 @@ class socket:
         goal = self.rn + len(buffer)
         ack_thread = threading.Thread(target=self.recv_acks, args=(goal,))
         num_left = len(buffer)
-        start_rn = self.rn
-        imagined_rn = self.rn
+        start_rn = imagined_rn = self.rn
+        print(f"org num_left {num_left}")
         ack_thread.start()
         while ack_thread.isAlive():
             with self.lock:
@@ -145,35 +145,26 @@ class socket:
         return len(buffer)
 
     def recv(self, nbytes):
+        #print(f"recv called from top, wanting {nbytes}")
         good_packet_list = []
         self.socket.settimeout(None)
         goal_length = int(ceil(float(nbytes) / MAX_PAYLOAD_SIZE))
         while len(good_packet_list) < goal_length:
-            x = len(good_packet_list)
             
-            if len(good_packet_list) == goal_length -1:
+            if len(good_packet_list) == goal_length:
                 num_to_get = HEADER_LEN + nbytes - ((goal_length - 1) * MAX_PAYLOAD_SIZE)
             else:
                 num_to_get = HEADER_LEN + MAX_PAYLOAD_SIZE
-            print(f"Goal is {goal_length} currently at {x}, leaving {num_to_get}")
+            #print(f"Goal is {goal_length} , leaving {num_to_get}")
             data_pack = self.get_packet(size=num_to_get)
             if(data_pack['flags'] != 0):
                 print('Probably getting extra from handshake', data_pack['flags'])
-                if data_pack['flags'] == SOCK352_FIN:
-                    #self.done = True
-                    #self.send_packet(ack_no=data_pack['seq_no'] + 1, flags=SOCK352_ACK)
-                    print("Fin flag sent")
-                    print(good_packet_list)
-                    final_string = b''.join(good_packet_list)
-
-                    return final_string
-                    break
             elif data_pack['seq_no'] == self.my_rn:
                 self.my_rn += data_pack['payload_len']
                 good_packet_list.append(data_pack['payload'])
             self.send_packet(ack_no = self.my_rn, flags=SOCK352_ACK)
 
-        print(good_packet_list)
+        #print(good_packet_list)
         final_string = b''.join(good_packet_list)
 
         return final_string
@@ -193,9 +184,6 @@ class socket:
                     timer = time.time()
                 elif ack_pack['flags'] == SOCK352_RESET:
                     self.send_packet(ack_no=self.rn, flags=SOCK352_ACK)
-                elif ack_pack['flags'] == SOCK352_FIN:
-                    self.done = True
-                    self.send_packet(ack_no=ack_pack['seq_no'] + 1, flags=SOCK352_ACK)
                     return
                 if time.time() - timer > 0.2:
                     self.register_timeout()
@@ -234,7 +222,7 @@ class socket:
         header = self.struct.pack(version, flags, opt_ptr, protocol, checksum, header_len,
                                   source_port, dest_port, seq_no, ack_no, window, payload_len)
         packet = header + payload
-        print(f"Package sending is seq {seq_no} with ack {ack_no} ")
+        #print(f"Package sending is seq {seq_no} with ack {ack_no} ")
         self.socket.sendto(packet, dest)
 
 
