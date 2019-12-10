@@ -15,6 +15,7 @@ import random
 
 def main():
     # parse all the arguments to the client
+    global fd
     parser = argparse.ArgumentParser(description='CS 352 Socket Server')
     parser.add_argument('-f', '--filename', help='Filename to Receiver', required=False)
     parser.add_argument('-p', '--port', help='CS 352 Socket Port (optional for part 1)', required=False)
@@ -86,9 +87,9 @@ def main():
 
     random.seed(a=352)
     # main loop to receive the data from the client
-    while (bytes_to_receive > 0):
+    while bytes_to_receive > 0:
         size = random.randrange(1, MAXFRAGMENTSIZE)
-        if (bytes_to_receive >= size):
+        if bytes_to_receive >= size:
             # pick a random size to receive
             fragment = s2.recv(size)
         else:
@@ -100,9 +101,9 @@ def main():
     end_stamp = time.perf_counter()
     lapsed_seconds = end_stamp - start_stamp
 
-    if (lapsed_seconds > 0.0):
+    if lapsed_seconds > 0.0:
         print("server1: received %d bytes in %0.6f seconds, %0.6f MB/s " % (
-        filelen, lapsed_seconds, (filelen / lapsed_seconds) / (1024 * 1024)))
+            filelen, lapsed_seconds, (filelen / lapsed_seconds) / (1024 * 1024)))
     else:
         print("server1: received %d bytes in %d seconds, inf MB/s " % (filelen, lapsed_seconds))
     fd.close()

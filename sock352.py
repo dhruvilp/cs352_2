@@ -5,7 +5,6 @@ PROJECT: CS352 -- PART 2
 """
 
 import binascii
-# import ta_sockets as syssock
 import socket as syssock
 import struct
 import sys
@@ -17,7 +16,7 @@ import random
 
 # Usage:
 # server2.py -f shakespeare.txt -u 8888 -v 9999
-# client2.py -d localhost -f shakespeare.txt -u 9999 -v 8888
+# client2.py -d localhost -f loremipsum.txt -u 9999 -v 8888
 
 SOCK352_SYN = 0x01
 SOCK352_FIN = 0x02
@@ -30,8 +29,10 @@ sock352PktHdrData = '!BBBBHHLLQQLL'
 header_len = struct.calcsize(sock352PktHdrData)
 udpPkt_hdr_data = struct.Struct(sock352PktHdrData)
 
-MAXIMUM_PACKET_SIZE = 64000
+MAXIMUM_PACKET_SIZE = 4096
 MAXIMUM_PAYLOAD_SIZE = MAXIMUM_PACKET_SIZE - header_len
+MAX_WINDOW = 32000
+CONGESTION_WINDOW = 2
 
 PACKET_FLAG_INDEX = 1
 PACKET_SEQUENCE_NO_INDEX = 8
@@ -72,7 +73,7 @@ class socket:
     def bind(self, address):
         return
 
-    def create_packet(self, dest=None, seq_no=0, ack_no=0, payload=b'', flags=0):
+    def create_packet(self, dest=None, seq_no=0, ack_no=0, payload=0x0, flags=0):
         if dest is None:
             dest = self.server_address
         version = 1
@@ -82,10 +83,10 @@ class socket:
         source_port = 0
         dest_port = 0
         window = 0
-        payload_len = len(payload)
-        header = udpPkt_hdr_data.pack(version, flags, opt_ptr, protocol, checksum, header_len,
+        payload_len = payload
+        packet = udpPkt_hdr_data.pack(version, flags, opt_ptr, protocol, checksum, header_len,
                                       source_port, dest_port, seq_no, ack_no, window, payload_len)
-        packet = header + payload
+        # packet = header + payload
         return packet
 
     def connect(self, address):  # fill in your code here
@@ -197,9 +198,9 @@ class socket:
                 pass
 
             try:
-                print("Client socket closed successfully!")
                 self.socket.close()
-            except:
+                print("Client socket closed successfully!")
+            except ():
                 print("Error: Socket has already been closed!")
 
         else:
@@ -232,13 +233,17 @@ class socket:
             total_packets += 1
 
         payload_len = MAXIMUM_PAYLOAD_SIZE
+
         for i in range(0, total_packets):
             if i == total_packets - 1:
                 if len(buffer) % MAXIMUM_PAYLOAD_SIZE != 0:
                     payload_len = len(buffer) % MAXIMUM_PAYLOAD_SIZE
 
-            new_packet = self.create_packet(flags=0x0, seq_no=self.sequence_no, ack_no=self.acknowledge_no,
-                                            payload=buffer[MAXIMUM_PAYLOAD_SIZE * i:MAXIMUM_PAYLOAD_SIZE * (i + 1)])
+            # payload = buffer[MAXIMUM_PAYLOAD_SIZE * i:MAXIMUM_PAYLOAD_SIZE * (i + 1)]
+            new_packet = self.create_packet(flags=0x0,
+                                            seq_no=self.sequence_no,
+                                            ack_no=self.acknowledge_no,
+                                            payload=payload_len)
             self.sequence_no += 1
             self.acknowledge_no += 1
             self.data_packets.append(new_packet)
