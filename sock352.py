@@ -1,3 +1,8 @@
+"""
+NAME: DHRUVIL PATEL <dhp68 | 171004047> & KABIR KURIYAN <kjk174 | 169005863>
+GROUP # 18
+PROJECT: CS352 -- PART 2
+"""
 import binascii
 import time
 from math import ceil
@@ -7,6 +12,12 @@ import struct
 import threading
 import sys
 import random
+
+# these functions are global to the class and define the UDP ports all messages are sent and received from
+
+# Usage:
+# server2.py -f shakespeare.txt -u 8888 -v 9999
+# client2.py -d localhost -f loremipsum.txt -u 9999 -v 8888
 
 version = 0x1
 sock352PktHdrData = "!BBBBHHLLQQLL"
@@ -44,6 +55,7 @@ class socket:
         self.socket = syssock.socket(syssock.AF_INET, syssock.SOCK_DGRAM)
         self.socket.settimeout(0.2)
         self.seq_no = random.randint(1, 100000)
+        self.data_packets = []
         self.ack_no = 0
         self.rn = 0
         self.my_rn = 0
@@ -53,6 +65,10 @@ class socket:
         self.is_connected = False
         self.send_address = None
         self.recv_address = None
+        self.more_to_send = 0
+        self.recv_window = MAX_WINDOW
+        self.more_send_buffer = 0
+        self.buffer_size = 14556
         return
 
     def bind(self, address):
@@ -135,7 +151,7 @@ class socket:
         self.ack_no = ack_packet[PACKET_SEQUENCE_NO_INDEX] + 1
         self.send_address = (addr[0], int(UDPTx))
         self.is_connected = True
-        print("Server is now connected to the client at %s:%s" % (self.send_address[0], self.send_address[1]))
+        print("Server is now connected to the client at %s:%s\n" % (self.send_address[0], self.send_address[1]))
         return self, addr
 
     def close(self):  # fill in your code here
@@ -160,14 +176,39 @@ class socket:
                 if fin_pack['flags'] == SOCK352_FIN:
                     self.send_packet(ack_no=fin_pack['seq_no'] + 1, flags=SOCK352_ACK)
 
+    def create_data_packets(self, buffer):
+        total_packets = int(len(buffer) / MAXIMUM_PAYLOAD_SIZE)
+        if len(buffer) % MAXIMUM_PAYLOAD_SIZE != 0:
+            total_packets += 1
+        payload_len = MAXIMUM_PAYLOAD_SIZE
+
+        for i in range(0, total_packets):
+            if i == total_packets - 1:
+                if len(buffer) % MAXIMUM_PAYLOAD_SIZE != 0:
+                    payload_len = len(buffer) % MAXIMUM_PAYLOAD_SIZE
+            new_packet = self.createPacket(flags=0x0,
+                                           sequence_no=self.seq_no,
+                                           ack_no=self.ack_no,
+                                           payload_len=payload_len)
+            self.seq_no += 1
+            self.ack_no += 1
+            self.data_packets.append(new_packet)
+
+        return total_packets
+
     def send(self, buffer):
         self.socket.settimeout(0.2)
         goal = self.rn + len(buffer)
+        total_packets = self.create_data_packets(buffer)
+        if total_packets > 1:
+            print("Total packets: " + str(total_packets))
+
         ack_thread = threading.Thread(target=self.recv_acks, args=(goal,))
         num_left = len(buffer)
         start_rn = imagined_rn = self.rn
-        print(f"org num_left {num_left}")
         ack_thread.start()
+        if total_packets > 1:
+            print("-------Started data packet transmission...-------")
         while ack_thread.isAlive():
             with self.lock:
                 if self.timeout:
@@ -179,24 +220,34 @@ class socket:
                 num_left = goal - imagined_rn
                 end_index = start_index + min(num_left, MAXIMUM_PAYLOAD_SIZE)
                 payload = buffer[start_index: end_index]
-                print(f"In send(), sending seq {imagined_rn} from {start_index} to {end_index}, with {num_left} left")
+                if imagined_rn > 0:
+                    print(f"In send(), sending seq {imagined_rn} from {start_index} to {end_index}, with {num_left} left")
                 self.send_packet(seq_no=imagined_rn, payload=payload)
                 imagined_rn += len(payload)
-        print("leaving send()")
+        if total_packets > 1:
+            print("-------Finished transmitting data packets-------")
         return len(buffer)
 
     def recv(self, nbytes):
-        # print(f"recv called from top, wanting {nbytes}")
         good_packet_list = []
         self.socket.settimeout(None)
         goal_length = int(ceil(float(nbytes) / MAXIMUM_PAYLOAD_SIZE))
+        if self.more_to_send < 0:
+            self.recv_window = MAX_WINDOW
+        self.more_to_send = self.recv_window - 40
+        self.recv_window = self.more_to_send
+        if self.more_send_buffer < 0:
+            self.buffer_size = MAXIMUM_PACKET_SIZE
+            print('-----Oops, the buffer is full!-----')
+        self.more_send_buffer = self.buffer_size - 40
+        self.buffer_size = self.more_send_buffer
+        print("# of bytes left in buffer: " + str(self.more_send_buffer))
+        print("After receiving packet, the window: " + str(self.more_to_send))
         while len(good_packet_list) < goal_length:
-
             if len(good_packet_list) == goal_length:
                 num_to_get = PACKET_HEADER_LENGTH + nbytes - ((goal_length - 1) * MAXIMUM_PAYLOAD_SIZE)
             else:
                 num_to_get = PACKET_HEADER_LENGTH + MAXIMUM_PAYLOAD_SIZE
-            # print(f"Goal is {goal_length} , leaving {num_to_get}")
             data_pack = self.get_packet(size=num_to_get)
             if data_pack['flags'] != 0:
                 print('Probably getting extra from handshake', data_pack['flags'])
@@ -204,10 +255,9 @@ class socket:
                 self.my_rn += data_pack['payload_len']
                 good_packet_list.append(data_pack['payload'])
             self.send_packet(ack_no=self.my_rn, flags=SOCK352_ACK)
+            # print(f"In recv(), receiving seq {self.my_rn}")
 
-        # print(good_packet_list)
         final_string = b''.join(good_packet_list)
-
         return final_string
 
     def register_timeout(self):
